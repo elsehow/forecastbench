@@ -222,3 +222,8 @@ uv run pytest tests/ --cov=forecastbench
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design documentation.
+
+## Notes
+
+- Eventually, we could use our shared data layer to contain questions from both the traditional sources *and* from CivBench. In other words, CivBench could be just another source! 
+- Do we really need to evaluate every model every run? Or, at some point, do we have enough information to know a model's average Brier score with sufficient statistical power? If so, we may be able to unlock some efficiencies by not testing models we've already tested sufficiently. This will pay dividends as we add more and more models to our eval list.

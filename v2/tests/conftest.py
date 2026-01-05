@@ -4,6 +4,11 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
+
+# Load .env file so API keys are available to tests
+# Use override=True to replace empty values that may be set in shell
+load_dotenv(override=True)
 
 
 def pytest_addoption(parser):

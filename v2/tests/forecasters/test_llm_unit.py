@@ -1,4 +1,4 @@
-"""Tests for forecasters."""
+"""Unit tests for LLM forecaster (no API calls)."""
 
 import pytest
 
@@ -53,8 +53,8 @@ class TestForecastResponses:
         assert resp.quantile_values[2] == 4950.0  # Median
 
 
-class TestLLMForecaster:
-    """Tests for LLM forecaster."""
+class TestLLMForecasterPrompts:
+    """Tests for LLM forecaster prompt building."""
 
     @pytest.fixture
     def binary_question(self) -> Question:
@@ -125,14 +125,3 @@ class TestLLMForecaster:
         assert "10%" in prompt  # Quantile values
         assert "50%" in prompt
         assert schema == QuantileForecastResponse
-
-    @pytest.mark.skip(reason="Requires API key - run manually with OPENAI_API_KEY set")
-    async def test_forecast_with_real_api(self, binary_question: Question):
-        """Integration test with real LLM API."""
-        forecaster = LLMForecaster(model="openai/gpt-4o-mini")
-        forecast = await forecaster.forecast(binary_question)
-
-        assert 0 <= forecast.probability <= 1
-        assert forecast.question_id == binary_question.id
-        assert forecast.forecaster == "openai/gpt-4o-mini"
-        assert forecast.reasoning is not None

@@ -1,7 +1,10 @@
 """LLM-based forecaster using LiteLLM with structured outputs."""
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import litellm
 from pydantic import BaseModel, Field
@@ -9,6 +12,9 @@ from pydantic import BaseModel, Field
 from forecastbench.config import settings
 from forecastbench.forecasters.base import Forecaster
 from forecastbench.models import Forecast, Question, QuestionType
+
+if TYPE_CHECKING:
+    from forecastbench.registry import ModelInfo
 
 logger = logging.getLogger(__name__)
 
@@ -120,12 +126,27 @@ class LLMForecaster(Forecaster):
     """Forecaster that uses LLMs via LiteLLM with structured outputs.
 
     Supports binary, continuous, and quantile question types.
+
+    Can be initialized with either:
+    - A LiteLLM model string (e.g., "anthropic/claude-opus-4-5-20251101")
+    - A ModelInfo object from the registry
+
+    Example:
+        # Using LiteLLM string directly
+        forecaster = LLMForecaster(model="anthropic/claude-opus-4-5-20251101")
+
+        # Using registry
+        from forecastbench.registry import get_model
+        model_info = get_model("claude-opus-4-5-20251101")
+        forecaster = LLMForecaster.from_registry(model_info)
     """
 
     def __init__(
         self,
         model: str | None = None,
         temperature: float = 0.0,
+        *,
+        model_info: ModelInfo | None = None,
     ):
         """Initialize the LLM forecaster.
 
@@ -133,13 +154,48 @@ class LLMForecaster(Forecaster):
             model: LiteLLM model identifier (e.g., "openai/gpt-4o", "anthropic/claude-3-opus").
                   If not provided, uses settings.default_model.
             temperature: Sampling temperature (0.0 for deterministic).
+            model_info: Optional ModelInfo from registry. If provided, uses its litellm_id
+                       and stores metadata for reference.
         """
-        self.model = model or settings.default_model
+        self._model_info = model_info
+        if model_info is not None:
+            self.model = model_info.litellm_id
+        else:
+            self.model = model or settings.default_model
         self.temperature = temperature
+
+    @classmethod
+    def from_registry(cls, model_info: ModelInfo, temperature: float = 0.0) -> LLMForecaster:
+        """Create a forecaster from a registry ModelInfo.
+
+        Args:
+            model_info: ModelInfo object from the registry
+            temperature: Sampling temperature (0.0 for deterministic)
+
+        Returns:
+            LLMForecaster configured with the model's settings
+        """
+        return cls(model_info=model_info, temperature=temperature)
 
     @property
     def name(self) -> str:
+        """Return the model identifier used for this forecaster."""
         return self.model
+
+    @property
+    def model_info(self) -> ModelInfo | None:
+        """Return the ModelInfo if this forecaster was created from the registry."""
+        return self._model_info
+
+    @property
+    def supports_structured_output(self) -> bool:
+        """Check if this model supports structured output.
+
+        Returns True if unknown (no model_info) to maintain backwards compatibility.
+        """
+        if self._model_info is not None:
+            return self._model_info.supports_structured_output
+        return True  # Assume yes if unknown
 
     def _build_prompt(self, question: Question) -> tuple[str, type[BaseModel]]:
         """Build the appropriate prompt and response schema for a question.
