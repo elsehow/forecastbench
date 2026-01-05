@@ -1,4 +1,4 @@
-"""Integration tests for question sources using real API data."""
+"""Integration tests for Manifold Markets source."""
 
 import pytest
 
@@ -7,6 +7,7 @@ from forecastbench.sources import registry
 from forecastbench.sources.manifold import ManifoldSource
 
 
+@pytest.mark.integration
 class TestManifoldSource:
     """Integration tests for Manifold Markets source."""
 
@@ -20,7 +21,6 @@ class TestManifoldSource:
 
         assert len(questions) > 0, "Should fetch at least one question"
 
-        # Check the first question has required fields
         q = questions[0]
         assert q.id, "Question should have an ID"
         assert q.source == "manifold"
@@ -41,7 +41,6 @@ class TestManifoldSource:
         questions = await source.fetch_questions()
         assert len(questions) > 0
 
-        # Get resolution for the first question
         resolution = await source.fetch_resolution(questions[0].id)
 
         # Open markets should have a current probability
@@ -54,17 +53,3 @@ class TestManifoldSource:
         """Verify Manifold source is in the registry."""
         assert "manifold" in registry
         assert registry.get("manifold") is ManifoldSource
-
-
-class TestSourceRegistry:
-    """Tests for the source registry."""
-
-    def test_list_sources(self):
-        """List all registered sources."""
-        sources = registry.list()
-        assert "manifold" in sources
-
-    def test_get_unknown_source_raises(self):
-        """Getting unknown source raises KeyError."""
-        with pytest.raises(KeyError):
-            registry.get("nonexistent_source")

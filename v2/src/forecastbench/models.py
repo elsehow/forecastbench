@@ -58,6 +58,8 @@ class Forecast(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    id: int | None = None  # Database ID, set after saving
+    question_set_id: int | None = None  # Which question set this forecast belongs to
     question_id: str
     source: str  # Question source (for namespacing)
     forecaster: str  # Model name or human identifier

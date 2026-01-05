@@ -168,3 +168,100 @@ class TestSQLiteStorage:
         retrieved = await storage.get_question("test", "update-test")
         assert retrieved.text == "Updated text"
         assert retrieved.resolved is True
+
+    async def test_forecast_returns_id(self, storage: SQLiteStorage, sample_forecast: Forecast):
+        """Saving a forecast returns its ID."""
+        forecast_id = await storage.save_forecast(sample_forecast)
+
+        assert forecast_id is not None
+        assert isinstance(forecast_id, int)
+        assert forecast_id > 0
+
+        # Verify the ID is on the retrieved forecast
+        forecasts = await storage.get_forecasts(question_id=sample_forecast.question_id)
+        assert len(forecasts) == 1
+        assert forecasts[0].id == forecast_id
+
+    async def test_forecast_with_question_set_id(self, storage: SQLiteStorage, sample_forecast: Forecast):
+        """Forecasts can be saved with a question_set_id."""
+        # First create a question set
+        q = Question(
+            id="qs-test-q",
+            source="test",
+            text="Test question",
+            created_at=datetime.now(timezone.utc),
+        )
+        await storage.save_question(q)
+
+        qs_id = await storage.create_question_set(
+            name="test-qs",
+            freeze_date=date.today(),
+            forecast_due_date=date.today(),
+            resolution_dates=[date.today()],
+            questions=[q],
+        )
+
+        # Save forecast with question_set_id
+        forecast = Forecast(
+            question_id="qs-test-q",
+            source="test",
+            forecaster="test-model",
+            probability=0.7,
+        )
+        forecast_id = await storage.save_forecast(forecast, question_set_id=qs_id)
+
+        # Verify we can filter by question_set_id
+        forecasts = await storage.get_forecasts(question_set_id=qs_id)
+        assert len(forecasts) == 1
+        assert forecasts[0].id == forecast_id
+        assert forecasts[0].question_set_id == qs_id
+
+    async def test_save_and_get_score(self, storage: SQLiteStorage, sample_forecast: Forecast):
+        """Save and retrieve scores."""
+        # Save a forecast first
+        forecast_id = await storage.save_forecast(sample_forecast)
+
+        # Save a score
+        await storage.save_score(
+            forecast_id=forecast_id,
+            resolution_date=date(2025, 1, 10),
+            resolution_value=1.0,
+            brier_score=0.1225,  # (0.65 - 1.0)^2
+        )
+
+        # Retrieve scores
+        scores = await storage.get_scores()
+        assert len(scores) == 1
+        assert scores[0]["forecast_id"] == forecast_id
+        assert scores[0]["brier_score"] == pytest.approx(0.1225)
+
+    async def test_leaderboard(self, storage: SQLiteStorage):
+        """Leaderboard aggregates scores by forecaster."""
+        # Create forecasts from different models
+        fc1 = Forecast(
+            question_id="q1", source="test", forecaster="model-a", probability=0.8
+        )
+        fc2 = Forecast(
+            question_id="q2", source="test", forecaster="model-a", probability=0.6
+        )
+        fc3 = Forecast(
+            question_id="q3", source="test", forecaster="model-b", probability=0.5
+        )
+
+        id1 = await storage.save_forecast(fc1)
+        id2 = await storage.save_forecast(fc2)
+        id3 = await storage.save_forecast(fc3)
+
+        # Score them (model-a does better)
+        await storage.save_score(id1, date(2025, 1, 1), 1.0, 0.04)  # (0.8-1)^2
+        await storage.save_score(id2, date(2025, 1, 1), 1.0, 0.16)  # (0.6-1)^2
+        await storage.save_score(id3, date(2025, 1, 1), 1.0, 0.25)  # (0.5-1)^2
+
+        leaderboard = await storage.get_leaderboard()
+
+        assert len(leaderboard) == 2
+        # model-a has mean 0.10, model-b has mean 0.25
+        assert leaderboard[0]["forecaster"] == "model-a"
+        assert leaderboard[0]["mean_brier_score"] == pytest.approx(0.10)
+        assert leaderboard[1]["forecaster"] == "model-b"
+        assert leaderboard[1]["mean_brier_score"] == pytest.approx(0.25)

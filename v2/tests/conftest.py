@@ -6,6 +6,35 @@ from pathlib import Path
 import pytest
 
 
+def pytest_addoption(parser):
+    """Add custom command line options."""
+    parser.addoption(
+        "--integration",
+        action="store_true",
+        default=False,
+        help="Run integration tests (requires network access)",
+    )
+
+
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers", "integration: mark test as integration test (requires --integration to run)"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip integration tests unless --integration flag is passed."""
+    if config.getoption("--integration"):
+        # --integration given: run all tests
+        return
+
+    skip_integration = pytest.mark.skip(reason="use --integration to run")
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip_integration)
+
+
 @pytest.fixture(scope="session")
 def event_loop():
     """Create an event loop for the test session."""

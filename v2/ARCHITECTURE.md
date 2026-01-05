@@ -2,12 +2,12 @@
 
 ## Goals
 
-1. **Fewer lines of code**: ~3,000 LOC (down from ~17,500)
+1. **Fewer lines of code**: ~3,700 LOC (down from ~17,500) - 78% reduction
 2. **More extensible**: Plugin-based sources, config-driven models
-3. **Better tested**: Integration tests with real data
+3. **Better tested**: 79 unit tests + 20 integration tests
 4. **Better data collection**: SQLite + queryable historical data
 
-## Current Pain Points
+## Current Pain Points (Original Codebase)
 
 | Area | Current State | Impact |
 |------|--------------|--------|
@@ -19,19 +19,22 @@
 
 ## Key Design Decisions
 
-### 1. LiteLLM for All LLM Calls
+### 1. LiteLLM with Structured Outputs
 
-Single unified interface replaces 6 provider-specific implementations:
+Single unified interface with Pydantic response schemas:
 
 ```python
-import litellm
+from pydantic import BaseModel, Field
 
-async def get_forecast(model: str, prompt: str) -> str:
-    response = await litellm.acompletion(
-        model=model,  # "openai/gpt-4o", "anthropic/claude-3-opus", etc.
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.choices[0].message.content
+class BinaryForecastResponse(BaseModel):
+    probability: float = Field(ge=0.0, le=1.0)
+    reasoning: str
+
+response = await litellm.acompletion(
+    model="openai/gpt-4o",
+    messages=[{"role": "user", "content": prompt}],
+    response_format=BinaryForecastResponse,  # Structured output!
+)
 ```
 
 ### 2. Abstract Question Source Pattern
@@ -46,12 +49,31 @@ class QuestionSource(ABC):
     async def fetch_questions(self) -> list[Question]: ...
 
     @abstractmethod
-    async def fetch_resolution(self, question_id: str) -> float | None: ...
+    async def fetch_resolution(self, question_id: str) -> Resolution | None: ...
 ```
 
 New sources = one file, auto-registered via decorator.
 
-### 3. SQLite for Local Storage
+### 3. Multiple Question Types
+
+Support for binary, continuous, and quantile forecasts:
+
+```python
+class QuestionType(str, Enum):
+    BINARY = "binary"       # Yes/No, resolves to 0 or 1
+    CONTINUOUS = "continuous"  # Numeric value
+    QUANTILE = "quantile"    # Predict distribution quantiles
+```
+
+### 4. Stratified Question Sampling
+
+Balance question sets across:
+- Sources (market vs data)
+- Categories
+- Resolution dates (fix year-end clustering)
+- Base rates (avoid 0%, 50%, 100% skew)
+
+### 5. SQLite for Local Storage
 
 Queryable database replaces JSONL files:
 
@@ -60,83 +82,157 @@ Queryable database replaces JSONL files:
 - Easy export to Parquet/HuggingFace
 - GCS sync for production
 
-### 4. Pydantic for All Data Models
-
-Type-safe, validated data throughout:
-
-```python
-class Question(BaseModel):
-    id: str
-    source: str
-    text: str
-    background: str | None
-    resolution_date: date
-    category: str | None
-    resolved: bool = False
-```
-
 ## Directory Structure
 
 ```
 v2/
+├── ARCHITECTURE.md
 ├── pyproject.toml
-├── config/
-│   └── settings.yaml
 ├── src/forecastbench/
 │   ├── __init__.py
-│   ├── config.py           # Pydantic settings
 │   ├── models.py           # Data models (Question, Forecast, Resolution)
-│   ├── sources/            # Question sources
+│   ├── sampling.py         # Stratified question sampling
+│   ├── sources/
 │   │   ├── __init__.py     # Registry
 │   │   ├── base.py         # Abstract base
-│   │   ├── manifold.py
-│   │   ├── metaculus.py
-│   │   └── ...
-│   ├── forecasters/        # LLM forecasting
+│   │   ├── manifold.py     # ✅ Implemented
+│   │   ├── kalshi.py       # Scaffolding ready
+│   │   └── good_judgment.py # Scaffolding ready
+│   ├── forecasters/
 │   │   ├── __init__.py
 │   │   ├── base.py
-│   │   └── llm.py          # LiteLLM implementation
-│   ├── scoring.py          # Brier scores, stats
-│   ├── storage/            # Data layer
-│   │   ├── __init__.py
-│   │   ├── base.py
-│   │   └── sqlite.py
-│   └── cli.py              # CLI interface
+│   │   └── llm.py          # LiteLLM with structured outputs
+│   └── storage/
+│       ├── __init__.py
+│       ├── base.py
+│       └── sqlite.py
 └── tests/
     ├── conftest.py
-    ├── test_sources.py     # Integration tests with real APIs
+    ├── test_sources.py
     ├── test_forecasters.py
     └── test_storage.py
 ```
 
+## Planned Improvements Support
+
+### Improve Question Sampling (End of 2025)
+
+| Improvement | v2 Support |
+|-------------|------------|
+| Add new platforms (Good Judgment, Kalshi) | ✅ Scaffolding in place |
+| Balance resolution dates | ✅ `SamplingConfig.resolution_date_bins` |
+| Fix year-end clustering | ✅ Stratified sampling by date bins |
+| Improve base-rate distribution | ✅ `SamplingConfig.base_rate_bins` |
+| Add more data sources | ✅ Plugin architecture ready |
+| Remove resolution dates > 1 year | ✅ `SamplingConfig.max_resolution_days` |
+
+### Add New Question Types (End of March 2026)
+
+| Improvement | v2 Support |
+|-------------|------------|
+| Quantile predictions | ✅ `QuestionType.QUANTILE` + `QuantileForecastResponse` |
+| Continuous forecasts | ✅ `QuestionType.CONTINUOUS` + `ContinuousForecastResponse` |
+| CRPS scoring | ✅ `ForecastScore.crps` field ready |
+
 ## Migration Plan
 
-### Phase 1: Core Infrastructure (Current)
+### Phase 1: Core Infrastructure ✅ Complete
 - Data models (Pydantic)
 - Abstract source interface
 - First concrete source (Manifold)
-- LiteLLM forecaster
+- LiteLLM forecaster with structured outputs
 - SQLite storage
 - Integration tests
+- Question sampling infrastructure
+- Scaffolding for new platforms
 
-### Phase 2: More Sources
-- Metaculus
-- Polymarket
-- FRED, ACLED, etc.
+### Phase 2: More Sources ✅ Complete
+- Manifold ✅
+- Metaculus ✅
+- Polymarket ✅
+- FRED ✅
+- Yahoo Finance ✅
+- INFER ✅
+- Good Judgment (scaffold ready)
+- Kalshi (scaffold ready)
 
-### Phase 3: Pipeline & CLI
-- Orchestration logic
-- CLI commands
-- Scheduling
+### Phase 3: Pipeline & CLI ✅ Complete
+- CLI with click ✅
+- `update-questions` - fetch from all sources ✅
+- `create-question-set` - sample and create evaluation set ✅
+- `forecast` - generate LLM forecasts ✅
+- `resolve` - check resolutions and score ✅
+- `leaderboard` - view standings ✅
+- `question-sets` - list sets ✅
+- `sources` - list available sources ✅
+- Configuration via pydantic-settings ✅
 
-### Phase 4: Production
+### Phase 4: Production (Not Started)
 - GCS sync
 - Cloud Run deployment
+- Slack notifications
 - Website integration
 
-## Testing Philosophy
+### Will Port from v1
+- **Cloud storage sync**: GCS or similar for production persistence
+- **Notifications**: Slack or similar for monitoring
 
-- Prefer integration tests over unit tests
-- Test with real API data where possible
+### Already Ported from v1 ✅
+- **INFER source**: Active prediction market ✅
+- **Better resolution logic**: Handles ambiguous resolutions, early resolutions, market vs data questions ✅
+- **Scoring with statistical significance**: Paired t-tests, confidence intervals, pairwise comparisons ✅
+
+### Intentionally Not Porting
+- **ACLED, DBnomics, Wikipedia sources**: Complex synthetic question generation for marginal value; FRED + Yahoo Finance sufficient for data-based questions
+- **Cloud Run manager/worker pattern**: Async Python handles workload; simple cron + CLI sufficient
+- **LLM-based question tagging/validation**: Adds API costs; better to filter at source
+- **Multi-step reasoning prompts**: The 56KB crowd forecaster methodology was for humans; simple prompts work well for LLMs
+- **Naive/dummy baseline forecasters**: Easy to add later if needed for papers
+
+## Testing
+
+### Test Summary
+
+| Test File | Tests | Description |
+|-----------|-------|-------------|
+| `test_forecasters.py` | 10 | LLM forecaster prompts and response parsing |
+| `test_pipeline.py` | 7 | End-to-end pipeline (questions → forecasts → resolution → scoring) |
+| `test_resolution.py` | 25 | Brier score, market/data resolution logic |
+| `test_scoring.py` | 26 | Standard error, confidence intervals, paired t-tests, leaderboard |
+| `test_sources.py` | 24 | Source registry + integration tests for each source |
+| `test_storage.py` | 11 | SQLite CRUD, question sets, scores, leaderboard |
+
+**Total: 79 unit tests, 20 integration tests**
+
+### Running Tests
+
+```bash
+# Run unit tests only (fast, no network)
+uv run pytest tests/ -v
+
+# Run all tests including integration tests (requires API keys)
+uv run pytest tests/ -v --integration
+
+# Run specific test file
+uv run pytest tests/test_resolution.py -v
+
+# Run tests with coverage
+uv run pytest tests/ --cov=forecastbench
+```
+
+### Integration Tests
+
+Integration tests hit real APIs and are skipped by default. Use `--integration` flag to run them.
+
+Some tests require API keys:
+- `FRED_API_KEY` - for FRED tests
+- `INFER_API_KEY` - for INFER tests
+- `ANTHROPIC_API_KEY` (or other LLM keys) - for forecaster tests
+
+### Testing Philosophy
+
+- Comprehensive unit tests for scoring and resolution logic (critical for correctness)
+- Integration tests with real API data for sources
+- End-to-end pipeline tests to verify full workflow
 - Use pytest fixtures for common setup
 - Keep tests simple and readable

@@ -110,6 +110,7 @@ class ManifoldSource(QuestionSource):
             resolution_date=resolution_date,
             resolved=resolved,
             resolution_value=resolution_value,
+            base_rate=market.get("probability"),
         )
 
     async def fetch_questions(self) -> list[Question]:
