@@ -1,5 +1,8 @@
 """Kalshi prediction market source.
 
+DEPRECATED: This source is disabled until we obtain API access permissions.
+Kalshi's API requires authentication and we don't currently have credentials.
+
 Kalshi is a regulated prediction market in the US.
 API docs: https://trading-api.readme.io/reference/getting-started
 """
@@ -10,14 +13,15 @@ from datetime import date, datetime, timezone
 import httpx
 
 from forecastbench.models import Question, QuestionType, Resolution, SourceType
-from forecastbench.sources.base import QuestionSource, registry
+from forecastbench.sources.base import QuestionSource
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 
 
-@registry.register
+# NOTE: Not registered - source is deprecated until we get API permissions
+# @registry.register
 class KalshiSource(QuestionSource):
     """Fetch questions from Kalshi prediction market.
 

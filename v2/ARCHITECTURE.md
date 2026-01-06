@@ -96,8 +96,8 @@ v2/
 │   │   ├── __init__.py     # Registry
 │   │   ├── base.py         # Abstract base
 │   │   ├── manifold.py     # ✅ Implemented
-│   │   ├── kalshi.py       # Scaffolding ready
-│   │   └── good_judgment.py # Scaffolding ready
+│   │   ├── kalshi.py       # ⏸️ Deprecated (no API permissions)
+│   │   └── good_judgment.py # ✅ Implemented (HTML scraping)
 │   ├── forecasters/
 │   │   ├── __init__.py
 │   │   ├── base.py
@@ -119,7 +119,7 @@ v2/
 
 | Improvement | v2 Support |
 |-------------|------------|
-| Add new platforms (Good Judgment, Kalshi) | ✅ Scaffolding in place |
+| Add new platforms (Good Judgment) | ✅ Good Judgment implemented |
 | Balance resolution dates | ✅ `SamplingConfig.resolution_date_bins` |
 | Fix year-end clustering | ✅ Stratified sampling by date bins |
 | Improve base-rate distribution | ✅ `SamplingConfig.base_rate_bins` |
@@ -167,8 +167,8 @@ Available scoring functions in `scoring.py`:
 - FRED ✅
 - Yahoo Finance ✅
 - INFER ✅
-- Good Judgment (scaffold ready)
-- Kalshi (scaffold ready)
+- Good Judgment ✅
+- Kalshi ⏸️ (deprecated - no API permissions)
 
 ### Phase 3: Pipeline & CLI ✅ Complete
 - CLI with click ✅
