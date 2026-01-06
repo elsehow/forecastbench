@@ -4,6 +4,7 @@ from forecastbench.sources.base import QuestionSource, registry
 
 # Import all sources to trigger registration
 from forecastbench.sources.fred import FREDSource
+from forecastbench.sources.good_judgment import GoodJudgmentSource
 from forecastbench.sources.infer import INFERSource
 from forecastbench.sources.manifold import ManifoldSource
 from forecastbench.sources.metaculus import MetaculusSource
@@ -25,6 +26,7 @@ __all__ = [
     "registry",
     "get_all_sources",
     "FREDSource",
+    "GoodJudgmentSource",
     "INFERSource",
     "ManifoldSource",
     "MetaculusSource",
