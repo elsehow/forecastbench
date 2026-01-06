@@ -182,7 +182,7 @@ questions              # All questions from all sources
 ├── resolved           # Has this resolved?
 └── resolution_value   # Final outcome (0, 1, or null)
 
-resolution_values      # Historical snapshots for resolution
+resolutions            # Historical snapshots for resolution
 ├── question_id, source, date, value
 
 question_sets          # Curated evaluation sets
@@ -193,12 +193,9 @@ forecasts              # Model predictions
 ├── question_id, question_set_id, forecaster
 ├── probability, reasoning
 └── created_at
-
-scores                 # Evaluated results
-├── forecast_id, resolution_date
-├── resolution_value, brier_score
-└── scored_at
 ```
+
+**Note:** Scores are computed on-the-fly from forecasts + resolutions, not persisted. This allows easy addition of new scoring methods (Brier, RMSE, log score, etc.) without schema migrations.
 
 ## Development
 

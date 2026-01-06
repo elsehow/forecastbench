@@ -132,7 +132,21 @@ v2/
 |-------------|------------|
 | Quantile predictions | ✅ `QuestionType.QUANTILE` + `QuantileForecastResponse` |
 | Continuous forecasts | ✅ `QuestionType.CONTINUOUS` + `ContinuousForecastResponse` |
-| CRPS scoring | ✅ `ForecastScore.crps` field ready |
+| New scoring methods | ✅ Pure functions in `scoring.py` - no migrations needed |
+
+### Scoring Architecture
+
+Scores are computed on-the-fly from stored forecasts + resolutions, not persisted to the database. This provides:
+
+- **No migrations** for new scoring methods - just add a function to `scoring.py`
+- **Single source of truth** - forecasts + resolutions are canonical
+- **Retroactive scoring** - new methods apply to all historical data immediately
+
+Available scoring functions in `scoring.py`:
+- `compute_brier_score()` - Binary forecasts
+- `compute_rmse()` - Continuous predictions
+- `compute_mae()` - Mean absolute error
+- `compute_log_score()` - Log probability score
 
 ## Migration Plan
 
@@ -197,12 +211,12 @@ v2/
 |-----------|-------|-------------|
 | `test_forecasters.py` | 10 | LLM forecaster prompts and response parsing |
 | `test_pipeline.py` | 7 | End-to-end pipeline (questions → forecasts → resolution → scoring) |
-| `test_resolution.py` | 25 | Brier score, market/data resolution logic |
-| `test_scoring.py` | 26 | Standard error, confidence intervals, paired t-tests, leaderboard |
+| `test_resolution.py` | 19 | Market/data resolution logic, edge cases |
+| `test_scoring.py` | 47 | Brier, RMSE, MAE, log score, confidence intervals, leaderboard |
 | `test_sources.py` | 24 | Source registry + integration tests for each source |
-| `test_storage.py` | 11 | SQLite CRUD, question sets, scores, leaderboard |
+| `test_storage.py` | 8 | SQLite CRUD, question sets, forecasts |
 
-**Total: 79 unit tests, 20 integration tests**
+**Total: 86 unit tests, 20 integration tests**
 
 ### Running Tests
 

@@ -93,19 +93,6 @@ class ResolutionRow(Base):
     value: Mapped[float] = mapped_column(Float)
 
 
-class ScoreRow(Base):
-    """Evaluation scores for forecasts."""
-
-    __tablename__ = "scores"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    forecast_id: Mapped[int] = mapped_column(Integer, ForeignKey("forecasts.id"))
-    resolution_date: Mapped[date] = mapped_column(Date)
-    resolution_value: Mapped[float] = mapped_column(Float)
-    brier_score: Mapped[float] = mapped_column(Float)
-    scored_at: Mapped[datetime] = mapped_column(DateTime)
-
-
 class SQLiteStorage(Storage):
     """SQLite storage backend using async SQLAlchemy."""
 
@@ -515,86 +502,6 @@ class SQLiteStorage(Storage):
             if row:
                 row.status = status
                 await session.commit()
-
-    # === Score Methods ===
-
-    async def save_score(
-        self,
-        forecast_id: int,
-        resolution_date: date,
-        resolution_value: float,
-        brier_score: float,
-    ) -> None:
-        """Save a score for a forecast."""
-        async with await self._get_session() as session:
-            row = ScoreRow(
-                forecast_id=forecast_id,
-                resolution_date=resolution_date,
-                resolution_value=resolution_value,
-                brier_score=brier_score,
-                scored_at=datetime.now(),
-            )
-            session.add(row)
-            await session.commit()
-
-    async def get_scores(
-        self,
-        forecaster: str | None = None,
-        question_set_id: int | None = None,
-    ) -> list[dict]:
-        """Get scores with optional filters."""
-        async with await self._get_session() as session:
-            stmt = select(ScoreRow, ForecastRow).join(
-                ForecastRow, ScoreRow.forecast_id == ForecastRow.id
-            )
-
-            if forecaster:
-                stmt = stmt.where(ForecastRow.forecaster == forecaster)
-            if question_set_id:
-                stmt = stmt.where(ForecastRow.question_set_id == question_set_id)
-
-            result = await session.execute(stmt)
-            rows = result.all()
-
-            return [
-                {
-                    "forecast_id": score.forecast_id,
-                    "forecaster": forecast.forecaster,
-                    "question_id": forecast.question_id,
-                    "source": forecast.source,
-                    "probability": forecast.probability,
-                    "resolution_date": score.resolution_date,
-                    "resolution_value": score.resolution_value,
-                    "brier_score": score.brier_score,
-                    "scored_at": score.scored_at,
-                }
-                for score, forecast in rows
-            ]
-
-    async def get_leaderboard(self, question_set_id: int | None = None) -> list[dict]:
-        """Get aggregated scores by forecaster."""
-        scores = await self.get_scores(question_set_id=question_set_id)
-
-        # Aggregate by forecaster
-        from collections import defaultdict
-
-        by_forecaster: dict[str, list[float]] = defaultdict(list)
-        for s in scores:
-            by_forecaster[s["forecaster"]].append(s["brier_score"])
-
-        leaderboard = []
-        for forecaster, brier_scores in by_forecaster.items():
-            leaderboard.append(
-                {
-                    "forecaster": forecaster,
-                    "mean_brier_score": sum(brier_scores) / len(brier_scores),
-                    "num_forecasts": len(brier_scores),
-                }
-            )
-
-        # Sort by mean brier score (lower is better)
-        leaderboard.sort(key=lambda x: x["mean_brier_score"])
-        return leaderboard
 
     async def close(self) -> None:
         await self._engine.dispose()

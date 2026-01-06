@@ -1,15 +1,17 @@
-"""Resolution logic for computing scores.
+"""Resolution logic for determining outcomes.
 
 This module handles:
 1. Determining resolution values for different source types (market vs data)
 2. Handling edge cases (ambiguous resolutions, early resolutions, etc.)
-3. Computing Brier scores
+
+Scoring functions are in scoring.py.
 """
 
 from dataclasses import dataclass
 from datetime import date
 
 from forecastbench.models import Forecast, Question, Resolution, SourceType
+from forecastbench.scoring import compute_brier_score
 
 
 @dataclass
@@ -20,21 +22,6 @@ class ResolutionResult:
     resolution_value: float | None = None
     resolution_date: date | None = None
     reason: str | None = None  # Why resolution failed or was skipped
-
-
-def compute_brier_score(probability: float, resolution_value: float) -> float:
-    """Compute Brier score for a binary forecast.
-
-    Brier score = (probability - outcome)^2
-
-    Args:
-        probability: Forecasted probability (0-1)
-        resolution_value: Actual outcome (0 or 1)
-
-    Returns:
-        Brier score (0-1, lower is better)
-    """
-    return (probability - resolution_value) ** 2
 
 
 def is_valid_resolution(value: float | None) -> bool:

@@ -1,13 +1,116 @@
-"""Scoring and statistical significance for leaderboard.
+"""Scoring functions and statistical significance for leaderboard.
 
 This module provides:
-1. Aggregate Brier score calculations
-2. Statistical significance testing between forecasters
-3. Confidence intervals for scores
+1. Pure scoring functions (Brier, RMSE, CRPS)
+2. Aggregate score calculations
+3. Statistical significance testing between forecasters
+4. Confidence intervals for scores
+
+Scores are computed on-the-fly from stored forecasts and resolutions,
+not persisted to the database. This allows easy addition of new scoring
+methods without schema migrations.
 """
 
 import math
 from dataclasses import dataclass
+
+
+# =============================================================================
+# Core Scoring Functions (Pure)
+# =============================================================================
+
+
+def compute_brier_score(probability: float, outcome: float) -> float:
+    """Compute Brier score for a binary forecast.
+
+    Brier score = (probability - outcome)^2
+
+    Args:
+        probability: Forecasted probability (0-1)
+        outcome: Actual outcome (0 or 1)
+
+    Returns:
+        Brier score (0-1, lower is better)
+            - 0.0 = perfect prediction
+            - 0.25 = maximum uncertainty (p=0.5)
+            - 1.0 = completely wrong
+    """
+    return (probability - outcome) ** 2
+
+
+def compute_rmse(predictions: list[float], actuals: list[float]) -> float:
+    """Compute Root Mean Square Error for continuous predictions.
+
+    RMSE = sqrt(mean((prediction - actual)^2))
+
+    Args:
+        predictions: List of predicted values
+        actuals: List of actual values (same length as predictions)
+
+    Returns:
+        RMSE (lower is better, 0 = perfect)
+
+    Raises:
+        ValueError: If lists have different lengths or are empty
+    """
+    if len(predictions) != len(actuals):
+        raise ValueError("predictions and actuals must have same length")
+    if len(predictions) == 0:
+        raise ValueError("Cannot compute RMSE on empty lists")
+
+    squared_errors = [(p - a) ** 2 for p, a in zip(predictions, actuals)]
+    return math.sqrt(sum(squared_errors) / len(squared_errors))
+
+
+def compute_mae(predictions: list[float], actuals: list[float]) -> float:
+    """Compute Mean Absolute Error for continuous predictions.
+
+    MAE = mean(|prediction - actual|)
+
+    Args:
+        predictions: List of predicted values
+        actuals: List of actual values (same length as predictions)
+
+    Returns:
+        MAE (lower is better, 0 = perfect)
+
+    Raises:
+        ValueError: If lists have different lengths or are empty
+    """
+    if len(predictions) != len(actuals):
+        raise ValueError("predictions and actuals must have same length")
+    if len(predictions) == 0:
+        raise ValueError("Cannot compute MAE on empty lists")
+
+    absolute_errors = [abs(p - a) for p, a in zip(predictions, actuals)]
+    return sum(absolute_errors) / len(absolute_errors)
+
+
+def compute_log_score(probability: float, outcome: float, epsilon: float = 1e-15) -> float:
+    """Compute log score (negative log likelihood) for a binary forecast.
+
+    Log score = -log(p) if outcome=1, -log(1-p) if outcome=0
+
+    Args:
+        probability: Forecasted probability (0-1)
+        outcome: Actual outcome (0 or 1)
+        epsilon: Small value to avoid log(0)
+
+    Returns:
+        Log score (lower is better, 0 = perfect certainty)
+    """
+    # Clamp probability to avoid log(0)
+    p = max(epsilon, min(1 - epsilon, probability))
+
+    if outcome >= 0.5:  # Treat as 1
+        return -math.log(p)
+    else:  # Treat as 0
+        return -math.log(1 - p)
+
+
+# =============================================================================
+# Leaderboard and Statistics
+# =============================================================================
 
 
 @dataclass

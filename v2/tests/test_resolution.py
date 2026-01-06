@@ -7,13 +7,13 @@ import pytest
 from forecastbench.models import Forecast, Question, QuestionType, Resolution, SourceType
 from forecastbench.resolution import (
     ResolutionResult,
-    compute_brier_score,
     is_valid_resolution,
     resolve_data_question,
     resolve_market_question,
     resolve_question,
     score_forecast,
 )
+from forecastbench.scoring import compute_brier_score
 
 
 class TestBrierScore:

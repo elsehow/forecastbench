@@ -237,23 +237,15 @@ class TestEndToEndPipeline:
             brier = score_forecast(forecast, result)
             assert brier is not None
 
-            # Save the score
-            await storage.save_score(
-                forecast_id=forecast_id,
-                resolution_date=result.resolution_date,
-                resolution_value=result.resolution_value,
-                brier_score=brier,
-            )
-
             scores_by_forecaster[forecast.forecaster].append(brier)
 
-        # Step 5: Generate leaderboard
-        leaderboard = await storage.get_leaderboard(question_set_id=qs_id)
+        # Step 5: Generate leaderboard using pure functions (scores computed on-the-fly)
+        leaderboard = build_leaderboard(scores_by_forecaster, with_confidence=True)
 
         assert len(leaderboard) == 2
         # Model A should be ranked first (lower Brier = better)
-        assert leaderboard[0]["forecaster"] == "model-a"
-        assert leaderboard[1]["forecaster"] == "model-b"
+        assert leaderboard[0].forecaster == "model-a"
+        assert leaderboard[1].forecaster == "model-b"
 
         # Model A's Brier scores:
         # q1: (0.85 - 1.0)^2 = 0.0225
@@ -261,7 +253,7 @@ class TestEndToEndPipeline:
         # q3: (0.15 - 0.0)^2 = 0.0225
         # q4: (0.90 - 1.0)^2 = 0.01
         # Mean: 0.02375
-        assert leaderboard[0]["mean_brier_score"] == pytest.approx(0.02375, rel=0.01)
+        assert leaderboard[0].mean_brier_score == pytest.approx(0.02375, rel=0.01)
 
         # Model B's Brier scores:
         # q1: (0.50 - 1.0)^2 = 0.25
@@ -269,7 +261,7 @@ class TestEndToEndPipeline:
         # q3: (0.50 - 0.0)^2 = 0.25
         # q4: (0.60 - 1.0)^2 = 0.16
         # Mean: 0.2875
-        assert leaderboard[1]["mean_brier_score"] == pytest.approx(0.2875, rel=0.01)
+        assert leaderboard[1].mean_brier_score == pytest.approx(0.2875, rel=0.01)
 
         # Step 6: Statistical significance
         entries = build_leaderboard(scores_by_forecaster, with_confidence=True)

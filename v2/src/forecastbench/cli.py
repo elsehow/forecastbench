@@ -466,23 +466,14 @@ async def _resolve(question_set_id: int | None):
                     skipped_count += 1
                     continue
 
-                # Score each forecast
+                # Count scorable forecasts (scores computed on-the-fly in leaderboard)
                 for fc in forecasts:
                     if fc.id is None:
                         continue
 
                     brier = score_forecast(fc, result)
-                    if brier is None:
-                        continue
-
-                    # Save the score
-                    await storage.save_score(
-                        forecast_id=fc.id,
-                        resolution_date=res_date,
-                        resolution_value=result.resolution_value,
-                        brier_score=brier,
-                    )
-                    total_scores += 1
+                    if brier is not None:
+                        total_scores += 1
 
         # Check if all resolution dates have passed
         if all(rd <= today for rd in resolution_dates):
@@ -520,26 +511,113 @@ def leaderboard(question_set: int | None, format: str, significance: bool):
 
 
 async def _leaderboard(question_set_id: int | None, output_format: str, show_significance: bool):
-    """Async implementation of leaderboard command."""
+    """Async implementation of leaderboard command.
+
+    Computes scores on-the-fly from stored forecasts and resolutions.
+    """
+    from collections import defaultdict
+    from datetime import date as date_type
+
     storage = get_storage()
+    today = date_type.today()
 
-    # Get raw scores for statistical analysis
-    scores = await storage.get_scores(question_set_id=question_set_id)
+    # Get question sets to evaluate
+    if question_set_id:
+        qs = await storage.get_question_set(question_set_id)
+        question_sets = [qs] if qs else []
+    else:
+        question_sets = await storage.get_question_sets()
 
-    if not scores:
+    if not question_sets:
+        click.echo("No question sets found.")
+        await storage.close()
+        return
+
+    # Compute scores on-the-fly
+    scores_by_forecaster: dict[str, list[float]] = defaultdict(list)
+    question_ids: list[str] = []
+
+    for qs in question_sets:
+        resolution_dates = [date_type.fromisoformat(d) for d in qs["resolution_dates"]]
+        forecast_due_date = qs["forecast_due_date"]
+        items = await storage.get_question_set_items(qs["id"])
+
+        for item in items:
+            question = await storage.get_question(item["source"], item["question_id"])
+            if not question:
+                continue
+
+            forecasts = await storage.get_forecasts(
+                question_id=item["question_id"],
+                source=item["source"],
+                question_set_id=qs["id"],
+            )
+
+            if not forecasts:
+                continue
+
+            # Get resolution data
+            resolution_at_due_date = None
+            if question.source_type == SourceType.DATA:
+                resolution_at_due_date = await storage.get_resolution(
+                    source=item["source"],
+                    question_id=item["question_id"],
+                    resolution_date=forecast_due_date,
+                )
+
+            # Use the latest passed resolution date
+            for res_date in sorted(resolution_dates, reverse=True):
+                if res_date > today:
+                    continue
+
+                resolution = await storage.get_resolution(
+                    source=item["source"],
+                    question_id=item["question_id"],
+                    resolution_date=res_date,
+                )
+
+                if resolution is None:
+                    resolution = await storage.get_resolution(
+                        source=item["source"],
+                        question_id=item["question_id"],
+                    )
+
+                result = resolve_question(
+                    question=question,
+                    resolution=resolution,
+                    forecast_due_date=forecast_due_date,
+                    resolution_at_due_date=resolution_at_due_date,
+                )
+
+                if not result.resolved:
+                    continue
+
+                # Score each forecast
+                for fc in forecasts:
+                    brier = score_forecast(fc, result)
+                    if brier is not None:
+                        scores_by_forecaster[fc.forecaster].append(brier)
+                        if item["question_id"] not in question_ids:
+                            question_ids.append(item["question_id"])
+
+                break  # Only use the latest resolution date
+
+    if not scores_by_forecaster:
         click.echo("No scores yet. Run 'forecast' and 'resolve' first.")
         await storage.close()
         return
 
-    # Group scores by forecaster
-    from collections import defaultdict
-    scores_by_forecaster: dict[str, list[float]] = defaultdict(list)
-    for s in scores:
-        scores_by_forecaster[s["forecaster"]].append(s["brier_score"])
-
     if output_format == "json":
-        results = await storage.get_leaderboard(question_set_id=question_set_id)
-        click.echo(json.dumps(results, indent=2))
+        # Build simple JSON output
+        leaderboard = []
+        for forecaster, scores in scores_by_forecaster.items():
+            leaderboard.append({
+                "forecaster": forecaster,
+                "mean_brier_score": sum(scores) / len(scores),
+                "num_forecasts": len(scores),
+            })
+        leaderboard.sort(key=lambda x: x["mean_brier_score"])
+        click.echo(json.dumps(leaderboard, indent=2))
     else:
         # Build leaderboard with confidence intervals
         entries = build_leaderboard(dict(scores_by_forecaster), with_confidence=True)
@@ -547,7 +625,6 @@ async def _leaderboard(question_set_id: int | None, output_format: str, show_sig
         # Compute pairwise significance if requested
         comparisons = None
         if show_significance and len(entries) > 1:
-            question_ids = list({s["question_id"] for s in scores})
             comparisons = compute_pairwise_significance(
                 dict(scores_by_forecaster), question_ids
             )
